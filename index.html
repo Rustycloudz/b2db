@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>B2B High Performance Tracker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        * { scrollbar-width: thin; scrollbar-color: #4b5563 #111827; }
+        .day-cell:hover { background-color: rgba(31, 41, 55, 0.5); }
+        .entry-done { opacity: 0.7; filter: grayscale(0.2); }
+        .goal-met { border: 2px solid #fbbf24 !important; background: rgba(251, 191, 36, 0.08) !important; }
+        .win-glow { border-left: 4px solid #22c55e !important; background: rgba(34, 197, 94, 0.15) !important; }
+        .contract-glow { border-left: 4px solid #a855f7 !important; background: rgba(168, 85, 247, 0.15) !important; }
+        .entry-selected { 
+            outline: 2px solid #f59e0b !important; 
+            outline-offset: 1px;
+            background: rgba(245, 158, 11, 0.2) !important;
+            transform: scale(1.02);
+        }
+        .action-bar {
+            animation: slideUp 0.2s ease-out;
+        }
+        @keyframes slideUp {
+            from { transform: translateY(100%); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-100 flex h-screen overflow-hidden font-sans text-sm">
+
+    <aside class="w-80 bg-gray-800 border-r border-gray-700 p-6 flex flex-col">
+        <h2 class="text-2xl font-black mb-1 text-blue-400 italic underline decoration-blue-800">SUCCESS LOG</h2>
+        <p class="text-[10px] text-gray-500 mb-6 uppercase tracking-[0.2em]">Target: 3 Meetings Booked / Day</p>
+        <div id="goal-list" class="flex-1 space-y-6"></div>
+        <div class="mt-auto pt-4 border-t border-gray-700 space-y-2">
+            <button onclick="viewDate = new Date(); renderCalendar();" class="w-full py-2 bg-blue-600/10 hover:bg-blue-600/30 text-blue-400 rounded text-xs font-bold transition">📍 Today</button>
+            <button onclick="exportToCSV()" class="w-full py-2 bg-gray-700 hover:bg-gray-600 rounded text-xs font-bold transition">📥 Export Data</button>
+        </div>
+    </aside>
+
+    <main class="flex-1 flex flex-col">
+        <header class="bg-gray-800 border-b border-gray-700 p-4 flex justify-between items-center">
+            <div class="flex items-center gap-6">
+                <div class="flex gap-1">
+                    <button onclick="changeMonth(-1)" class="p-2 hover:bg-gray-700 rounded-lg transition">◀</button>
+                    <button onclick="changeMonth(1)" class="p-2 hover:bg-gray-700 rounded-lg transition">▶</button>
+                </div>
+                <h1 id="month-display" class="text-2xl font-black uppercase tracking-tighter"></h1>
+            </div>
+            <div class="flex gap-3">
+                <button onclick="openModal('CALL')" class="px-6 py-2 bg-blue-600 hover:bg-blue-500 rounded-full font-bold shadow-lg transition">📞 Log Call</button>
+                <button onclick="openModal('MEETING')" class="px-6 py-2 bg-emerald-600 hover:bg-emerald-500 rounded-full font-bold shadow-lg transition">🤝 Log Meeting</button>
+            </div>
+        </header>
+
+        <div class="grid grid-cols-7 bg-gray-800 border-b border-gray-700 text-center text-[10px] py-2 font-black text-gray-500">
+            <div>SUN</div><div>MON</div><div>TUE</div><div>WED</div><div>THU</div><div>FRI</div><div>SAT</div>
+        </div>
+        <div id="calendar-grid" class="flex-1 grid grid-cols-7 auto-rows-fr bg-gray-700 gap-[1px] overflow-y-auto"></div>
+    </main>
+
+    <!-- Add Entry Modal -->
+    <div id="modal" class="hidden fixed inset-0 bg-black/90 backdrop-blur-sm flex items-center justify-center z-50">
+        <div class="bg-gray-800 border border-gray-700 p-8 rounded-2xl w-[480px] shadow-2xl">
+            <h3 id="modal-title" class="text-xl font-bold mb-6 text-white uppercase tracking-tight italic">Log Activity</h3>
+            <div class="space-y-4">
+                <input id="entry-title" type="text" placeholder="Client / Company Name" class="w-full bg-gray-900 border border-gray-700 p-3 rounded outline-none focus:border-blue-500">
+                <input id="entry-date" type="date" class="w-full bg-gray-900 border border-gray-700 p-3 rounded outline-none focus:border-blue-500">
+                <div id="outcome-container">
+                    <label class="block text-[10px] font-bold text-gray-500 mb-2 uppercase">Outcome</label>
+                    <div id="outcome-buttons" class="flex gap-2"></div>
+                </div>
+                <div>
+                    <label class="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Notes / Next Steps</label>
+                    <textarea id="entry-notes" placeholder="..." class="w-full bg-gray-900 border border-gray-700 p-3 rounded outline-none h-20 text-xs"></textarea>
+                </div>
+            </div>
+            <div class="flex justify-end gap-3 mt-8">
+                <button onclick="closeModal()" class="px-6 py-2 text-gray-400 hover:text-white font-bold transition">Cancel</button>
+                <button id="save-btn" onclick="saveEntry()" class="px-10 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-bold shadow-lg transition">Save Entry</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Floating Action Bar (appears when entry is selected) -->
+    <div id="action-bar" class="hidden fixed bottom-6 left-1/2 -translate-x-1/2 bg-gray-800 border border-gray-600 rounded-2xl shadow-2xl p-4 z-40 action-bar">
+        <div class="flex items-center gap-4">
+            <div class="flex items-center gap-3 pr-4 border-r border-gray-600">
+                <span class="text-yellow-400 text-lg">📌</span>
+                <div>
+                    <p id="selected-title" class="font-bold text-white truncate max-w-[200px]"></p>
+                    <p id="selected-details" class="text-[10px] text-gray-400"></p>
+                </div>
+            </div>
+            <button onclick="viewSelectedEntry()" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-bold text-xs transition flex items-center gap-2">
+                👁️ View Details
+            </button>
+            <button onclick="deleteSelectedEntry()" class="px-4 py-2 bg-red-600 hover:bg-red-500 text-white rounded-lg font-bold text-xs transition flex items-center gap-2">
+                🗑️ Delete
+            </button>
+            <button onclick="clearSelection()" class="px-3 py-2 text-gray-400 hover:text-white transition" title="Cancel">
+                ✕
+            </button>
+        </div>
+    </div>
+
+    <!-- View Entry Modal -->
+    <div id="view-modal" class="hidden fixed inset-0 bg-black/90 backdrop-blur-sm flex items-center justify-center z-50">
+        <div class="bg-gray-800 border border-gray-700 p-8 rounded-2xl w-[480px] shadow-2xl">
+            <div class="flex justify-between items-start mb-4">
+                <h3 id="view-modal-title" class="text-xl font-bold text-white uppercase tracking-tight italic"></h3>
+                <button onclick="closeViewModal()" class="text-gray-500 hover:text-white text-2xl leading-none">&times;</button>
+            </div>
+            <div class="space-y-4 text-sm">
+                <div class="flex gap-4">
+                    <div class="flex-1">
+                        <p class="text-[10px] text-gray-500 uppercase mb-1">Date</p>
+                        <p id="view-date" class="text-white"></p>
+                    </div>
+                    <div class="flex-1">
+                        <p class="text-[10px] text-gray-500 uppercase mb-1">Type</p>
+                        <p id="view-type" class="text-white"></p>
+                    </div>
+                    <div class="flex-1">
+                        <p class="text-[10px] text-gray-500 uppercase mb-1">Outcome</p>
+                        <p id="view-outcome" class="font-bold"></p>
+                    </div>
+                </div>
+                <div>
+                    <p class="text-[10px] text-gray-500 uppercase mb-1">Notes</p>
+                    <p id="view-notes" class="text-gray-300 bg-gray-900 p-3 rounded min-h-[60px]"></p>
+                </div>
+            </div>
+            <div class="flex justify-end gap-3 mt-8">
+                <button onclick="closeViewModal()" class="px-6 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-bold transition">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let db;
+        let currentType = 'CALL'; 
+        let currentOutcome = 'NO';
+        let viewDate = new Date();
+        let selectedEntry = null;
+        let selectedElement = null;
+        const DB_NAME = "B2B_Performance_Tracker_V2";
+
+        let loadRequestId = 0;
+        let isSaving = false;
+
+        const request = indexedDB.open(DB_NAME, 2);
+        request.onupgradeneeded = (e) => {
+            let database = e.target.result;
+            if (!database.objectStoreNames.contains("entries")) {
+                database.createObjectStore("entries", { keyPath: "id", autoIncrement: true });
+            }
+        };
+        request.onsuccess = (e) => { 
+            db = e.target.result; 
+            renderCalendar(); 
+        };
+
+        // Click outside to deselect
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('.entry-item') && !e.target.closest('#action-bar')) {
+                clearSelection();
+            }
+        });
+
+        // Escape key to deselect
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                clearSelection();
+                closeModal();
+                closeViewModal();
+            }
+            // Delete key when entry is selected
+            if (e.key === 'Delete' && selectedEntry) {
+                deleteSelectedEntry();
+            }
+        });
+
+        function selectEntry(entry, element) {
+            // Clear previous selection
+            if (selectedElement) {
+                selectedElement.classList.remove('entry-selected');
+            }
+            
+            // Set new selection
+            selectedEntry = entry;
+            selectedElement = element;
+            element.classList.add('entry-selected');
+            
+            // Update and show action bar
+            document.getElementById('selected-title').textContent = entry.title;
+            document.getElementById('selected-details').textContent = `${entry.type} • ${entry.date} • ${entry.outcome}`;
+            document.getElementById('action-bar').classList.remove('hidden');
+        }
+
+        function clearSelection() {
+            if (selectedElement) {
+                selectedElement.classList.remove('entry-selected');
+            }
+            selectedEntry = null;
+            selectedElement = null;
+            document.getElementById('action-bar').classList.add('hidden');
+        }
+
+        function viewSelectedEntry() {
+            if (selectedEntry) {
+                openViewModal(selectedEntry);
+            }
+        }
+
+        function deleteSelectedEntry() {
+            if (selectedEntry) {
+                const title = selectedEntry.title;
+                if (confirm(`Delete "${title}"?\n\nThis cannot be undone.`)) {
+                    const id = selectedEntry.id;
+                    clearSelection();
+                    deleteEntry(id);
+                }
+            }
+        }
+
+        function setOutcome(val, btn) {
+            currentOutcome = val;
+            document.querySelectorAll('.outcome-btn').forEach(b => {
+                b.classList.remove('border-blue-500', 'border-green-500', 'border-purple-500', 'bg-blue-900/20', 'bg-green-900/20', 'bg-purple-900/20');
+            });
+            if (val === 'MEETING_BOOKED') btn.classList.add('border-green-500', 'bg-green-900/20');
+            else if (val === 'CONTRACT_SIGNED') btn.classList.add('border-purple-500', 'bg-purple-900/20');
+            else btn.classList.add('border-blue-500', 'bg-blue-900/20');
+        }
+
+        function openModal(type) {
+            clearSelection();
+            currentType = type;
+            currentOutcome = 'NO';
+            document.getElementById('entry-title').value = '';
+            document.getElementById('entry-notes').value = '';
+            document.getElementById('entry-date').value = new Date().toISOString().split('T')[0];
+            
+            const btnContainer = document.getElementById('outcome-buttons');
+            if (type === 'CALL') {
+                document.getElementById('modal-title').innerText = "📞 Log Outbound Call";
+                btnContainer.innerHTML = `
+                    <button onclick="setOutcome('MEETING_BOOKED', this)" class="outcome-btn flex-1 py-3 bg-gray-900 border border-gray-700 rounded transition font-bold text-[10px]">MEETING BOOKED</button>
+                    <button onclick="setOutcome('NO', this)" class="outcome-btn flex-1 py-3 bg-gray-900 border border-gray-700 rounded transition font-bold text-[10px]">NO INTEREST</button>`;
+            } else {
+                document.getElementById('modal-title').innerText = "🤝 Log Sales Meeting";
+                btnContainer.innerHTML = `
+                    <button onclick="setOutcome('CONTRACT_SIGNED', this)" class="outcome-btn flex-1 py-3 bg-gray-900 border border-gray-700 rounded transition font-bold text-[10px]">CONTRACT SIGNED</button>
+                    <button onclick="setOutcome('NO', this)" class="outcome-btn flex-1 py-3 bg-gray-900 border border-gray-700 rounded transition font-bold text-[10px]">FOLLOW UP</button>`;
+            }
+            document.getElementById('modal').classList.remove('hidden');
+        }
+
+        function closeModal() { document.getElementById('modal').classList.add('hidden'); }
+
+        function openViewModal(entry) {
+            document.getElementById('view-modal-title').innerText = `${entry.type === 'CALL' ? '📞' : '🤝'} ${entry.title}`;
+            document.getElementById('view-date').innerText = entry.date;
+            document.getElementById('view-type').innerText = entry.type === 'CALL' ? 'Outbound Call' : 'Sales Meeting';
+            
+            const outcomeEl = document.getElementById('view-outcome');
+            let outcomeText = entry.outcome;
+            if (entry.outcome === 'MEETING_BOOKED') outcomeText = '✅ Meeting Booked';
+            else if (entry.outcome === 'CONTRACT_SIGNED') outcomeText = '🎉 Contract Signed';
+            else if (entry.outcome === 'NO') outcomeText = entry.type === 'CALL' ? '❌ No Interest' : '📋 Follow Up';
+            
+            outcomeEl.innerText = outcomeText;
+            outcomeEl.className = 'font-bold';
+            if (entry.outcome === 'MEETING_BOOKED') outcomeEl.classList.add('text-green-400');
+            else if (entry.outcome === 'CONTRACT_SIGNED') outcomeEl.classList.add('text-purple-400');
+            else outcomeEl.classList.add('text-gray-400');
+            
+            document.getElementById('view-notes').innerText = entry.notes || '(No notes)';
+            document.getElementById('view-modal').classList.remove('hidden');
+        }
+
+        function closeViewModal() { 
+            document.getElementById('view-modal').classList.add('hidden'); 
+        }
+
+        function saveEntry() {
+            if (!db || isSaving) return;
+            
+            const title = document.getElementById('entry-title').value.trim();
+            const date = document.getElementById('entry-date').value;
+            const notes = document.getElementById('entry-notes').value.trim();
+
+            if (!title || !date) return alert("Missing fields.");
+
+            isSaving = true;
+            const saveBtn = document.getElementById('save-btn');
+            saveBtn.disabled = true;
+            saveBtn.textContent = 'Saving...';
+
+            const transaction = db.transaction(["entries"], "readwrite");
+            const store = transaction.objectStore("entries");
+            
+            store.add({ 
+                title, 
+                date, 
+                type: currentType, 
+                outcome: currentOutcome, 
+                notes, 
+                timestamp: Date.now() 
+            });
+
+            transaction.oncomplete = () => {
+                isSaving = false;
+                saveBtn.disabled = false;
+                saveBtn.textContent = 'Save Entry';
+                closeModal();
+                renderCalendar();
+            };
+            
+            transaction.onerror = (e) => {
+                isSaving = false;
+                saveBtn.disabled = false;
+                saveBtn.textContent = 'Save Entry';
+                console.error("Database error:", e.target.error);
+                alert("Database error.");
+            };
+        }
+
+        function renderCalendar() {
+            if (!db) return;
+            
+            clearSelection();
+            
+            const grid = document.getElementById('calendar-grid');
+            grid.innerHTML = '';
+            
+            const y = viewDate.getFullYear(), m = viewDate.getMonth();
+            document.getElementById('month-display').innerText = `${viewDate.toLocaleString('default', { month: 'long' })} ${y}`;
+
+            const firstDay = new Date(y, m, 1).getDay();
+            const daysInMonth = new Date(y, m + 1, 0).getDate();
+
+            for (let i = 0; i < firstDay; i++) {
+                grid.appendChild(Object.assign(document.createElement('div'), {className: "bg-gray-950/20"}));
+            }
+
+            for (let i = 1; i <= daysInMonth; i++) {
+                const dateStr = `${y}-${(m+1).toString().padStart(2,'0')}-${i.toString().padStart(2,'0')}`;
+                const cell = document.createElement('div');
+                cell.id = `cell-${dateStr}`;
+                cell.className = "day-cell bg-gray-900 p-2 min-h-[140px] flex flex-col border border-transparent transition-all";
+                cell.innerHTML = `<span class="text-gray-700 font-black text-[10px]">${i}</span><div id="date-${dateStr}" class="mt-1 space-y-1 flex-1 overflow-y-auto"></div>`;
+                grid.appendChild(cell);
+            }
+            loadEntries();
+        }
+
+        function loadEntries() {
+            const thisRequestId = ++loadRequestId;
+            
+            const tx = db.transaction(["entries"], "readonly").objectStore("entries").getAll();
+            tx.onsuccess = (e) => {
+                if (thisRequestId !== loadRequestId) {
+                    return;
+                }
+                
+                const entries = e.target.result;
+                const dailyWins = {};
+                
+                document.querySelectorAll('[id^="date-"]').forEach(el => el.innerHTML = '');
+                document.querySelectorAll('.day-cell').forEach(el => el.classList.remove('goal-met'));
+
+                entries.forEach(entry => {
+                    const container = document.getElementById(`date-${entry.date}`);
+                    if (container) {
+                        if (entry.outcome === 'MEETING_BOOKED') {
+                            dailyWins[entry.date] = (dailyWins[entry.date] || 0) + 1;
+                        }
+                        
+                        const div = document.createElement('div');
+                        let style = 'bg-gray-800 text-gray-500 entry-done';
+                        if (entry.outcome === 'MEETING_BOOKED') style = 'win-glow text-green-300 font-bold';
+                        if (entry.outcome === 'CONTRACT_SIGNED') style = 'contract-glow text-purple-300 font-bold';
+                        
+                        div.className = `entry-item text-[9px] p-1.5 rounded border border-gray-800 flex justify-between items-center transition-all cursor-pointer hover:brightness-110 ${style}`;
+                        div.innerHTML = `<span class="truncate flex-1">${entry.type === 'CALL' ? '📞' : '🤝'} ${entry.title}</span>`;
+                        
+                        // Click to select
+                        div.onclick = (e) => {
+                            e.stopPropagation();
+                            selectEntry(entry, div);
+                        };
+                        
+                        // Double click to view details
+                        div.ondblclick = (e) => {
+                            e.stopPropagation();
+                            openViewModal(entry);
+                        };
+                        
+                        container.appendChild(div);
+                    }
+                });
+                
+                Object.keys(dailyWins).forEach(d => { 
+                    if(dailyWins[d] >= 3) document.getElementById(`cell-${d}`)?.classList.add('goal-met'); 
+                });
+                updateStats(entries, dailyWins);
+            };
+        }
+
+        function updateStats(entries, dailyWins) {
+            const monthStr = `${viewDate.getFullYear()}-${(viewDate.getMonth()+1).toString().padStart(2, '0')}`;
+            const mMeetings = entries.filter(e => e.date.startsWith(monthStr) && e.outcome === 'MEETING_BOOKED').length;
+            const mContracts = entries.filter(e => e.date.startsWith(monthStr) && e.outcome === 'CONTRACT_SIGNED').length;
+            const mPerfect = Object.keys(dailyWins).filter(d => d.startsWith(monthStr) && dailyWins[d] >= 3).length;
+
+            document.getElementById('goal-list').innerHTML = `
+                <div class="bg-gray-900 p-5 rounded-2xl border-b-4 border-yellow-500 shadow-xl"><p class="text-[10px] text-gray-500 uppercase">Perfect Days</p><p class="text-4xl font-black">${mPerfect}</p></div>
+                <div class="bg-gray-900 p-5 rounded-2xl border-b-4 border-green-500 shadow-xl"><p class="text-[10px] text-gray-500 uppercase">Meetings</p><p class="text-4xl font-black text-green-400">${mMeetings}</p></div>
+                <div class="bg-gray-900 p-5 rounded-2xl border-b-4 border-purple-500 shadow-xl"><p class="text-[10px] text-gray-500 uppercase">Contracts</p><p class="text-4xl font-black text-purple-400">${mContracts}</p></div>
+                <div class="mt-4 p-3 bg-gray-900/50 rounded-lg border border-gray-700">
+                    <p class="text-[9px] text-gray-500 uppercase mb-1">💡 Tip</p>
+                    <p class="text-[10px] text-gray-400">Click an entry to select it, then use the action bar to view or delete.</p>
+                </div>`;
+        }
+
+        function deleteEntry(id) { 
+            const tx = db.transaction(["entries"], "readwrite");
+            tx.objectStore("entries").delete(id);
+            tx.oncomplete = () => renderCalendar();
+        }
+
+        function changeMonth(offset) { 
+            viewDate.setDate(1); 
+            viewDate.setMonth(viewDate.getMonth() + offset); 
+            renderCalendar(); 
+        }
+
+        function exportToCSV() {
+            db.transaction(["entries"], "readonly").objectStore("entries").getAll().onsuccess = (e) => {
+                const csv = ["Client,Date,Type,Outcome,Notes", ...e.target.result.map(r => `"${r.title}",${r.date},${r.type},${r.outcome},"${r.notes || ''}"`)].join("\n");
+                const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], {type:'text/csv'})); a.download = 'B2B_Tracker.csv'; a.click();
+            };
+        }
+    </script>
+</body>
+</html>
