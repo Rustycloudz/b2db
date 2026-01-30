@@ -1,0 +1,43 @@
+# GitHub Actions workflow: build and upload artifact (uses actions/upload-artifact@v4)
+# Save as .github/workflows/ci.yml and push/PR to run.
+name: CI — Build & Upload Artifact
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  ARTIFACT_NAME: my-artifact
+  ARTIFACT_PATH: artifact/output.tar.gz
+  ARTIFACT_RETENTION_DAYS: 7
+
+jobs:
+  build-and-upload:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ===== Replace the steps below with your project's real install/build commands =====
+      - name: Prepare artifact directory
+        run: |
+          rm -rf artifact
+          mkdir -p artifact
+          # Put your real build commands here. Example placeholder:
+          echo "Build produced files for commit $GITHUB_SHA" > artifact/README.txt
+          # Create a tarball of the artifact directory (this will be uploaded)
+          tar -czf $ARTIFACT_PATH -C artifact .
+      # =====================================================================================
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARTIFACT_NAME }}
+          path: ${{ env.ARTIFACT_PATH }}
+          retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
